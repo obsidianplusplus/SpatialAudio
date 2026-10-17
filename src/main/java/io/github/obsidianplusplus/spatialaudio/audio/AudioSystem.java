@@ -1,11 +1,13 @@
 package io.github.obsidianplusplus.spatialaudio.audio;
 
 import io.github.obsidianplusplus.spatialaudio.SpatialAudio;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleRenderer;
 import io.github.obsidianplusplus.spatialaudio.acoustics.EchoParams;
 import io.github.obsidianplusplus.spatialaudio.acoustics.ReverbParams;
 import io.github.obsidianplusplus.spatialaudio.config.ConfigManager;
 import io.github.obsidianplusplus.spatialaudio.config.HrtfMode;
 import io.github.obsidianplusplus.spatialaudio.config.SpatialAudioConfig;
+import io.github.obsidianplusplus.spatialaudio.config.SpatialRenderer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +33,7 @@ import org.lwjgl.system.MemoryStack;
  *
  * <p>生命周期：
  * <ol>
- *   <li>{@link #buildContextAttributes} —— 创建 OpenAL 上下文前，按配置请求 HRTF、输出模式与辅助发送通道；</li>
+ *   <li>{@link #buildContextAttributes} —— 创建 OpenAL 上下文前，按配置与渲染方式请求 HRTF、输出模式与辅助发送通道；</li>
  *   <li>{@link #onLibraryInitialized} —— 上下文创建后探测扩展能力、读取 HRTF 状态并初始化 EFX；</li>
  *   <li>{@link #onEngineLoaded} —— 取得原版声音线程的执行器，之后周期性更新都投递到该线程；</li>
  *   <li>{@link #onLibraryCleanup} —— 上下文销毁前停止一切 OpenAL 调用。</li>
@@ -84,6 +86,9 @@ public final class AudioSystem {
 
 	/** HRTF 状态。 */
 	private volatile HrtfInfo hrtf = HrtfInfo.UNKNOWN;
+
+	/** 当前 OpenAL 上下文实际采用的渲染方式（创建上下文时确定）。 */
+	private volatile SpatialRenderer activeRenderer = SpatialRenderer.BUILT_IN;
 
 	/** 设备上可用的 HRTF 数据集名称。 */
 	private volatile List<String> availableHrtfs = List.of();
@@ -148,6 +153,13 @@ public final class AudioSystem {
 		if (!config.enabled) {
 			return null;
 		}
+		final AppleRenderer apple = AppleRenderer.get();
+		if (apple.isLoopbackDevice(device)) {
+			// Apple 空间音频：输出多声道声场，双耳渲染交给 Apple 引擎。
+			this.availableHrtfs = List.of();
+			return apple.buildLoopbackAttributes(device, stack);
+		}
+		final boolean systemStereo = config.renderer == SpatialRenderer.APPLE_SYSTEM_STEREO;
 		try {
 			final boolean hrtfExtension = ALC10.alcIsExtensionPresent(device, "ALC_SOFT_HRTF");
 			final boolean outputModeExtension = ALC10.alcIsExtensionPresent(device, "ALC_SOFT_output_mode");
@@ -157,7 +169,8 @@ public final class AudioSystem {
 
 			final IntBuffer attributes = stack.callocInt(16);
 			if (hrtfExtension) {
-				final boolean wantHrtf = switch (config.hrtfMode) {
+				// Apple 系统空间化立体声：由 macOS 完成空间化，本模组必须输出未经 HRTF 处理的普通立体声。
+				final boolean wantHrtf = !systemStereo && switch (config.hrtfMode) {
 					case FORCE_ON -> true;
 					case FOLLOW_VANILLA -> vanillaHrtf;
 					case OFF -> false;
@@ -170,6 +183,10 @@ public final class AudioSystem {
 					// 要求以双声道 HRTF 方式输出，即使系统把设备报告为多声道也坚持双耳渲染。
 					attributes.put(SOFTOutputMode.ALC_OUTPUT_MODE_SOFT).put(SOFTOutputMode.ALC_STEREO_HRTF_SOFT);
 				}
+			}
+			if (systemStereo && outputModeExtension) {
+				// 普通声像立体声（不做 UHJ 编码），macOS“空间化立体声”把左右声道当作前方两只虚拟扬声器。
+				attributes.put(SOFTOutputMode.ALC_OUTPUT_MODE_SOFT).put(SOFTOutputMode.ALC_STEREO_BASIC_SOFT);
 			}
 			attributes.put(SOFTOutputLimiter.ALC_OUTPUT_LIMITER_SOFT).put(ALC10.ALC_TRUE);
 			if (efxExtension) {
@@ -202,6 +219,15 @@ public final class AudioSystem {
 			this.reportedUpdateError = false;
 
 			final ALCapabilities al = AL.getCapabilities();
+			final SpatialAudioConfig config = ConfigManager.get();
+			final boolean loopback = AppleRenderer.get().isLoopbackDevice(device);
+			if (loopback) {
+				this.activeRenderer = SpatialRenderer.APPLE;
+			} else if (config.enabled && config.renderer == SpatialRenderer.APPLE_SYSTEM_STEREO) {
+				this.activeRenderer = SpatialRenderer.APPLE_SYSTEM_STEREO;
+			} else {
+				this.activeRenderer = SpatialRenderer.BUILT_IN;
+			}
 			final boolean hrtfExtension = ALC10.alcIsExtensionPresent(device, "ALC_SOFT_HRTF");
 			final boolean efxExtension = ALC10.alcIsExtensionPresent(device, "ALC_EXT_EFX");
 			final int sends = efxExtension ? ALC10.alcGetInteger(device, EXTEfx.ALC_MAX_AUXILIARY_SENDS) : 0;
@@ -219,9 +245,14 @@ public final class AudioSystem {
 			} else {
 				this.hrtf = HrtfInfo.UNSUPPORTED;
 			}
+			if (this.activeRenderer == SpatialRenderer.APPLE) {
+				this.hrtf = HrtfInfo.APPLE;
+			} else if (this.activeRenderer == SpatialRenderer.APPLE_SYSTEM_STEREO) {
+				this.hrtf = HrtfInfo.SYSTEM_STEREO;
+			}
 			ALC10.alcGetError(device);
 
-			if (efxExtension && sends > 0 && ConfigManager.get().enabled) {
+			if (efxExtension && sends > 0 && config.enabled) {
 				this.efx.init(sends);
 			} else {
 				this.efx.invalidate();
@@ -230,8 +261,9 @@ public final class AudioSystem {
 			AL10.alDopplerFactor(0.0f);
 			EfxManager.clearErrors();
 			this.alive = true;
-			SpatialAudio.LOGGER.info("空间音频已接管设备「{}」：HRTF {}（{}，状态码 {}），立体声定位{}，屏幕锚定{}",
+			SpatialAudio.LOGGER.info("空间音频已接管设备「{}」：渲染方式 {}，HRTF {}（{}，状态码 {}），立体声定位{}，屏幕锚定{}",
 				this.deviceName,
+				this.activeRenderer,
 				this.hrtf.enabled() ? "已开启" : "未开启",
 				this.hrtf.name().isEmpty() ? "-" : this.hrtf.name(),
 				this.hrtf.status(),
@@ -501,6 +533,15 @@ public final class AudioSystem {
 	}
 
 	/**
+	 * 当前 OpenAL 上下文实际采用的渲染方式。选择了 Apple 空间音频但未能启用（系统不支持或已回退）时为内置渲染器。
+	 *
+	 * @return 渲染方式
+	 */
+	public SpatialRenderer activeRenderer() {
+		return this.activeRenderer;
+	}
+
+	/**
 	 * 设备上可用的 HRTF 数据集。
 	 *
 	 * @return 名称列表
@@ -574,6 +615,12 @@ public final class AudioSystem {
 		/** 设备不支持 HRTF。 */
 		public static final HrtfInfo UNSUPPORTED = new HrtfInfo(false, -2, "");
 
+		/** 双耳渲染由 Apple 空间音频引擎完成。 */
+		public static final HrtfInfo APPLE = new HrtfInfo(true, -3, "Apple");
+
+		/** 双耳渲染由 macOS 系统“空间化立体声”完成。 */
+		public static final HrtfInfo SYSTEM_STEREO = new HrtfInfo(true, -4, "macOS");
+
 		/**
 		 * 状态码对应的翻译键。
 		 *
@@ -594,6 +641,10 @@ public final class AudioSystem {
 				return "spatialaudio.hrtf_status.disabled";
 			} else if (this.status == -2) {
 				return "spatialaudio.hrtf_status.unsupported";
+			} else if (this.status == -3) {
+				return "spatialaudio.hrtf_status.apple";
+			} else if (this.status == -4) {
+				return "spatialaudio.hrtf_status.system_stereo";
 			}
 			return "spatialaudio.hrtf_status.unknown";
 		}

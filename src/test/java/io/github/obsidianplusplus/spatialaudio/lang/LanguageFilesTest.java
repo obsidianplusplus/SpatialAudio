@@ -6,9 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleRendererStatus;
+import io.github.obsidianplusplus.spatialaudio.config.AppleBedFormat;
 import io.github.obsidianplusplus.spatialaudio.config.HeadTrackingSource;
 import io.github.obsidianplusplus.spatialaudio.config.HrtfMode;
 import io.github.obsidianplusplus.spatialaudio.config.RecenterMode;
+import io.github.obsidianplusplus.spatialaudio.config.SpatialRenderer;
 import io.github.obsidianplusplus.spatialaudio.headtracking.TrackerStatus;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,7 +19,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -25,7 +30,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * 语言文件完整性测试：中英文键集合一致，且源码与枚举引用的所有键都存在。
+ * 语言文件完整性测试：中英文键集合与占位符数量一致，且源码与枚举引用的所有键都存在。
  */
 class LanguageFilesTest {
 	/** 源码中的翻译键字面量。 */
@@ -39,6 +44,9 @@ class LanguageFilesTest {
 
 	/** 不属于翻译键的字面量。 */
 	private static final Set<String> NOT_TRANSLATION_KEYS = Set.of("spatialaudio.debug");
+
+	/** 格式化占位符（%s、%d、%1$s 等，不含转义的 %%）。 */
+	private static final Pattern PLACEHOLDER = Pattern.compile("%(?:\\d+\\$)?[sd]");
 
 	/**
 	 * 读取语言文件。
@@ -65,6 +73,63 @@ class LanguageFilesTest {
 	}
 
 	/**
+	 * 同一个键在中英文中的占位符数量一致（否则某种语言会丢失参数或显示原始的 %s）。
+	 *
+	 * @throws IOException 读取失败
+	 */
+	@Test
+	void placeholdersMatch() throws IOException {
+		final JsonObject zh = load("zh_cn");
+		final JsonObject en = load("en_us");
+		final Set<String> mismatched = new TreeSet<>();
+		for (final String key : zh.keySet()) {
+			if (en.has(key) && countPlaceholders(zh.get(key).getAsString()) != countPlaceholders(en.get(key).getAsString())) {
+				mismatched.add(key);
+			}
+		}
+		assertTrue(mismatched.isEmpty(), "以下键的中英文占位符数量不一致：" + mismatched);
+	}
+
+	/**
+	 * 新增渲染方式相关的枚举都有完整的翻译（包括渲染方式的专属悬停说明与状态的排障提示）。
+	 *
+	 * @throws IOException 读取失败
+	 */
+	@Test
+	void rendererKeysExist() throws IOException {
+		final Set<String> keys = load("zh_cn").keySet();
+		final Set<String> missing = new TreeSet<>();
+		for (final String key : rendererKeys()) {
+			if (!keys.contains(key)) {
+				missing.add(key);
+			}
+		}
+		assertTrue(missing.isEmpty(), "语言文件缺少以下渲染方式相关的键：" + missing);
+	}
+
+	/**
+	 * 渲染方式、Apple 声场格式与渲染状态枚举引用的全部键。
+	 *
+	 * @return 键列表
+	 */
+	private static List<String> rendererKeys() {
+		final List<String> keys = new ArrayList<>();
+		for (final SpatialRenderer renderer : SpatialRenderer.values()) {
+			keys.add(renderer.translationKey());
+			// 设置界面在通用说明之后附加当前取值的专属说明。
+			keys.add(renderer.translationKey() + ".tooltip");
+		}
+		for (final AppleBedFormat format : AppleBedFormat.values()) {
+			keys.add(format.translationKey());
+		}
+		for (final AppleRendererStatus status : AppleRendererStatus.values()) {
+			keys.add(status.translationKey());
+			keys.add(status.hintKey());
+		}
+		return keys;
+	}
+
+	/**
 	 * 源码、枚举与界面选项引用的所有键都存在于语言文件中。
 	 *
 	 * @throws IOException 读取失败
@@ -86,6 +151,7 @@ class LanguageFilesTest {
 			required.add(status.translationKey());
 			required.add(status.hintKey());
 		}
+		required.addAll(rendererKeys());
 		final Path sources = Path.of("src/main/java");
 		try (Stream<Path> files = Files.walk(sources)) {
 			for (final Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
@@ -101,6 +167,21 @@ class LanguageFilesTest {
 		final Set<String> missing = new TreeSet<>(required);
 		missing.removeAll(keys);
 		assertTrue(missing.isEmpty(), "语言文件缺少以下键：" + missing);
+	}
+
+	/**
+	 * 统计文本中的格式化占位符数量。
+	 *
+	 * @param text 文本
+	 * @return 占位符数量
+	 */
+	private static int countPlaceholders(final String text) {
+		final Matcher matcher = PLACEHOLDER.matcher(text.replace("%%", ""));
+		int count = 0;
+		while (matcher.find()) {
+			count++;
+		}
+		return count;
 	}
 
 	/**

@@ -12,11 +12,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
 /**
- * 设置界面顶部的实时状态面板：每帧刷新头部追踪状态、姿态角、HRTF 与声学环境信息。
+ * 设置界面顶部的实时状态面板：每帧刷新头部追踪状态、渲染方式、姿态角、HRTF 与声学环境信息。
  */
 public final class StatusWidget extends AbstractWidget {
-	/** 面板高度。 */
-	public static final int HEIGHT = 66;
+	/** 面板所在行的高度（控件本身比行高少 4 像素作为行间距，可容纳 6 行文字：(76 - 4 - 4) / 10）。 */
+	public static final int HEIGHT = 76;
 
 	/** 行高。 */
 	private static final int LINE_HEIGHT = 10;

@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -120,6 +121,33 @@ final class OptionFactory {
 			key,
 			tooltip(key),
 			// 循环按钮会自动在前面加上“标题: ”，这里只返回值本身。
+			(caption, v) -> label.apply(v),
+			new OptionInstance.Enum<>(values, codec),
+			values.contains(value) ? value : values.getFirst(),
+			setter::accept
+		);
+	}
+
+	/**
+	 * 循环切换选项，悬停说明在通用说明之后附加当前取值的专属说明（用于各取值差别很大的选项，例如渲染方式）。
+	 *
+	 * @param key 翻译键
+	 * @param values 可选值
+	 * @param value 初始值
+	 * @param label 值的显示文本
+	 * @param valueTooltip 当前取值的专属说明
+	 * @param setter 写入回调
+	 * @param <T> 值类型
+	 * @return 选项
+	 */
+	static <T> OptionInstance<T> cycle(final String key, final List<T> values, final T value, final Function<T, Component> label,
+			final Function<T, Component> valueTooltip, final Consumer<T> setter) {
+		final Codec<T> codec = Codec.INT.xmap(i -> values.get(Math.clamp(i, 0, values.size() - 1)), values::indexOf);
+		final Component general = Component.translatable(key + ".tooltip");
+		return new OptionInstance<>(
+			key,
+			// 循环按钮每次切换取值都会重新调用，悬停说明随之更新。
+			v -> Tooltip.create(Component.empty().append(general).append("\n\n").append(valueTooltip.apply(v))),
 			(caption, v) -> label.apply(v),
 			new OptionInstance.Enum<>(values, codec),
 			values.contains(value) ? value : values.getFirst(),

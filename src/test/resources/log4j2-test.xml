@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 单元测试专用日志配置：只输出到控制台，避免 Minecraft 自带的 log4j2.xml 在项目根目录生成 logs/ 文件夹。 -->
+<Configuration status="WARN">
+	<Appenders>
+		<Console name="SysOut" target="SYSTEM_OUT">
+			<PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg{nolookups}%n" />
+		</Console>
+	</Appenders>
+	<Loggers>
+		<Root level="info">
+			<AppenderRef ref="SysOut" />
+		</Root>
+	</Loggers>
+</Configuration>

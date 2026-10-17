@@ -1,15 +1,21 @@
 package io.github.obsidianplusplus.spatialaudio.client.screen;
 
 import com.mojang.blaze3d.Blaze3D;
+import io.github.obsidianplusplus.spatialaudio.SpatialAudio;
 import io.github.obsidianplusplus.spatialaudio.audio.AudioSystem;
 import io.github.obsidianplusplus.spatialaudio.client.SpatialAudioClient;
+import io.github.obsidianplusplus.spatialaudio.config.AppleBedFormat;
 import io.github.obsidianplusplus.spatialaudio.config.ConfigManager;
 import io.github.obsidianplusplus.spatialaudio.config.HeadTrackingSource;
 import io.github.obsidianplusplus.spatialaudio.config.HrtfMode;
 import io.github.obsidianplusplus.spatialaudio.config.RecenterMode;
 import io.github.obsidianplusplus.spatialaudio.config.SpatialAudioConfig;
+import io.github.obsidianplusplus.spatialaudio.config.SpatialRenderer;
 import io.github.obsidianplusplus.spatialaudio.headtracking.HeadTrackingManager;
 import io.github.obsidianplusplus.spatialaudio.headtracking.MacHelperLauncher;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -18,6 +24,7 @@ import net.minecraft.client.OptionInstance;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.StringWidget;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import net.minecraft.network.chat.Component;
@@ -27,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * 模组主设置界面。
  *
  * <p>界面编辑的是配置的“工作副本”，关闭界面（或进入子界面）时统一应用：
- * 头部追踪参数即时生效；数据源或端口变化会重启追踪；HRTF 变化会重新加载声音引擎。
+ * 头部追踪参数即时生效；数据源、端口或渲染方式变化会重启追踪（与助手）；
+ * HRTF、渲染方式或 Apple 声场格式变化会重新加载声音引擎。
  */
 public final class SpatialAudioConfigScreen extends OptionsSubScreen {
 	/** 选项翻译键前缀。 */
@@ -70,7 +78,7 @@ public final class SpatialAudioConfigScreen extends OptionsSubScreen {
 			Button.builder(Component.translatable("spatialaudio.button.recenter"), b -> HeadTrackingManager.get().recenter()).build(),
 			Button.builder(Component.translatable("spatialaudio.button.restart_tracking"), b -> {
 				this.applyChanges();
-				HeadTrackingManager.get().start(ConfigManager.get());
+				SpatialAudioClient.restart();
 			}).build()
 		);
 
@@ -89,6 +97,28 @@ public final class SpatialAudioConfigScreen extends OptionsSubScreen {
 		}
 		options.addBig(OptionFactory.cycle(OPTION + "hrtf_name", hrtfChoices, c.hrtfName,
 			v -> v.isEmpty() ? Component.translatable("spatialaudio.hrtf_name.default") : Component.literal(v), v -> c.hrtfName = v));
+		// 三种渲染方式差别很大，悬停说明在通用说明之后附加当前所选方式的要求与设置方法。
+		options.addBig(OptionFactory.cycle(OPTION + "renderer", Arrays.asList(SpatialRenderer.values()), c.renderer,
+			v -> Component.translatable(v.translationKey()), v -> Component.translatable(v.translationKey() + ".tooltip"),
+			v -> c.renderer = v));
+
+		// —— Apple 空间音频 ——
+		options.addHeader(Component.translatable("spatialaudio.config.section.apple"));
+		options.addSmall(
+			OptionFactory.cycle(OPTION + "apple_bed_format", Arrays.asList(AppleBedFormat.values()), c.appleBedFormat,
+				v -> Component.translatable(v.translationKey()), v -> c.appleBedFormat = v),
+			OptionFactory.toggle(OPTION + "apple_auto_head_tracking", c.applePreferAutoHeadTracking,
+				v -> c.applePreferAutoHeadTracking = v)
+		);
+		final OptionInstance<Integer> appleBuffer = OptionFactory.integer(OPTION + "apple_buffer", 10, 200, c.appleBufferMs,
+			"spatialaudio.unit.milliseconds", v -> c.appleBufferMs = v);
+		options.addSmall(
+			appleBuffer.createButton(this.options),
+			appleBuffer,
+			Button.builder(Component.translatable("spatialaudio.button.open_custom_helper_folder"), b -> openCustomHelperFolder())
+				.tooltip(Tooltip.create(Component.translatable("spatialaudio.button.open_custom_helper_folder.tooltip")))
+				.build()
+		);
 
 		// —— 头部追踪 ——
 		options.addHeader(Component.translatable("spatialaudio.config.section.tracking"));
@@ -201,6 +231,19 @@ public final class SpatialAudioConfigScreen extends OptionsSubScreen {
 				this.minecraft.gui.setScreen(new SpatialAudioConfigScreen(this.lastScreen));
 			}).build()
 		);
+	}
+
+	/**
+	 * 打开自备助手文件夹（不存在时先创建），用户可把带 Apple 授权的助手放到这里。
+	 */
+	private static void openCustomHelperFolder() {
+		final Path folder = MacHelperLauncher.helperDirectory().resolve(MacHelperLauncher.CUSTOM_DIRECTORY);
+		try {
+			Files.createDirectories(folder);
+		} catch (IOException e) {
+			SpatialAudio.LOGGER.warn("无法创建自备助手文件夹：{}", folder, e);
+		}
+		Blaze3D.openPath(folder);
 	}
 
 	@Override

@@ -9,7 +9,7 @@ import net.minecraft.sounds.SoundSource;
  * 模组的全部可配置项。
  *
  * <p>本类是纯数据对象，由 {@link ConfigManager} 以 JSON 形式读写到 {@code config/spatialaudio.json}。
- * 字段按功能分组：双耳渲染、头部追踪、非定位声音、声学模拟、方块材质覆盖、分类设置与界面。
+ * 字段按功能分组：双耳渲染、Apple 空间音频、头部追踪、非定位声音、声学模拟、方块材质覆盖、分类设置与界面。
  */
 public final class SpatialAudioConfig {
 	/** 当前配置格式版本，用于将来迁移旧配置。 */
@@ -28,6 +28,20 @@ public final class SpatialAudioConfig {
 
 	/** 指定使用的 HRTF 数据集名称，空字符串表示使用 OpenAL Soft 默认数据集。 */
 	public String hrtfName = "";
+
+	// ===================== Apple 空间音频 =====================
+
+	/** 空间音频渲染方式：模组内置、Apple 空间音频或 Apple 系统空间化立体声。 */
+	public SpatialRenderer renderer = SpatialRenderer.BUILT_IN;
+
+	/** Apple 空间音频方式下交给 Apple 渲染引擎的声场格式。 */
+	public AppleBedFormat appleBedFormat = AppleBedFormat.AMBISONICS_3;
+
+	/** 助手具备 Apple 头部追踪授权时，优先使用 Apple 自动头部追踪；否则使用本模组处理后的头部姿态。 */
+	public boolean applePreferAutoHeadTracking = true;
+
+	/** 助手中排队等待播放的音频时长（毫秒），越小延迟越低，越大越不容易断音。 */
+	public int appleBufferMs = 30;
 
 	// ===================== 头部追踪 =====================
 
@@ -215,6 +229,13 @@ public final class SpatialAudioConfig {
 		if (this.hrtfName == null) {
 			this.hrtfName = "";
 		}
+		if (this.renderer == null) {
+			this.renderer = SpatialRenderer.BUILT_IN;
+		}
+		if (this.appleBedFormat == null) {
+			this.appleBedFormat = AppleBedFormat.AMBISONICS_3;
+		}
+		this.appleBufferMs = Math.clamp(this.appleBufferMs, 10, 200);
 		if (this.trackingSource == null) {
 			this.trackingSource = HeadTrackingSource.AUTO;
 		}

@@ -1,6 +1,7 @@
 package io.github.obsidianplusplus.spatialaudio.headtracking;
 
 import io.github.obsidianplusplus.spatialaudio.SpatialAudio;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleRenderer;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,9 +33,13 @@ import net.fabricmc.loader.api.FabricLoader;
  *
  * <p>助手来源优先级：
  * <ol>
+ *   <li>用户自备的助手：{@code config/spatialaudio/helper/custom/SpatialAudioHeadTracker.app}（原样启动，不解压、不重新签名，
+ *       用于带有 Apple 头部追踪与个性化空间音频授权的 Developer ID 签名版本）；</li>
  *   <li>jar 内预编译的通用二进制（在 macOS 上构建或通过 CI 发布时包含）；</li>
  *   <li>jar 内附带的 Swift 源码，在检测到 Xcode 命令行工具时于本机现场编译。</li>
  * </ol>
+ *
+ * <p>同一个助手还负责 Apple 空间音频渲染：启动参数中带有音频桥端口与令牌时，助手会连接模组并播放声场。
  */
 public final class MacHelperLauncher {
 	/** 助手 .app 名称。 */
@@ -51,6 +56,9 @@ public final class MacHelperLauncher {
 
 	/** 最低支持的 macOS 主版本号（CMHeadphoneMotionManager 在 macOS 14 Sonoma 引入）。 */
 	private static final int MIN_MACOS_MAJOR = 14;
+
+	/** 用户自备助手所在的子目录名。 */
+	public static final String CUSTOM_DIRECTORY = "custom";
 
 	/**
 	 * 启动器状态。
@@ -86,6 +94,9 @@ public final class MacHelperLauncher {
 
 	/** 启动代次，用于丢弃过期的后台任务。 */
 	private volatile int generation;
+
+	/** 当前使用的是否为用户自备的助手。 */
+	private volatile boolean customHelper;
 
 	/**
 	 * 当前系统是否为 macOS。
@@ -154,11 +165,21 @@ public final class MacHelperLauncher {
 	}
 
 	/**
+	 * 当前使用的是否为用户自备的助手。
+	 *
+	 * @return 是自备助手时返回 true
+	 */
+	public boolean customHelper() {
+		return this.customHelper;
+	}
+
+	/**
 	 * 在后台线程准备并启动助手。
 	 *
-	 * @param port 助手需要发送数据的目标 UDP 端口
+	 * @param port 助手发送头部姿态的目标 UDP 端口；0 表示不需要头部姿态（助手不会读取耳机运动数据）
+	 * @param audio Apple 空间音频的音频桥参数；为 null 表示不需要渲染声场
 	 */
-	public void startAsync(final int port) {
+	public void startAsync(final int port, final AppleRenderer.HelperLink audio) {
 		if (!isMacOs()) {
 			return;
 		}
@@ -169,7 +190,7 @@ public final class MacHelperLauncher {
 		}
 		final int myGeneration = ++this.generation;
 		this.state = State.PREPARING;
-		final Thread thread = new Thread(() -> this.prepareAndLaunch(port, myGeneration), "SpatialAudio-HelperLauncher");
+		final Thread thread = new Thread(() -> this.prepareAndLaunch(port, audio, myGeneration), "SpatialAudio-HelperLauncher");
 		thread.setDaemon(true);
 		thread.start();
 	}
@@ -196,20 +217,22 @@ public final class MacHelperLauncher {
 	/**
 	 * 后台任务：准备助手文件并启动。
 	 *
-	 * @param port 目标端口
+	 * @param port 姿态目标端口，0 表示不需要
+	 * @param audio 音频桥参数，可为 null
 	 * @param myGeneration 本次任务代次
 	 */
-	private void prepareAndLaunch(final int port, final int myGeneration) {
+	private void prepareAndLaunch(final int port, final AppleRenderer.HelperLink audio, final int myGeneration) {
 		try {
 			final Path app = this.prepareBundle();
 			if (app == null || myGeneration != this.generation) {
 				return;
 			}
-			this.launch(app, port);
+			this.launch(app, port, audio);
 			if (myGeneration == this.generation) {
 				this.launchedAtNanos = System.nanoTime();
 				this.state = State.LAUNCHED;
-				SpatialAudio.LOGGER.info("AirPods 头部追踪助手已启动，数据端口 {}", port);
+				SpatialAudio.LOGGER.info("macOS 助手已启动：姿态端口 {}，音频桥端口 {}{}", port, audio == null ? "-" : audio.port(),
+					this.customHelper ? "（用户自备助手）" : "");
 			}
 		} catch (IOException | RuntimeException e) {
 			this.fail("启动 AirPods 头部追踪助手失败：" + e.getMessage(), e);
@@ -229,6 +252,11 @@ public final class MacHelperLauncher {
 	private Path prepareBundle() throws IOException, InterruptedException {
 		final Path base = helperDirectory();
 		Files.createDirectories(base);
+		final Path custom = base.resolve(CUSTOM_DIRECTORY).resolve(APP_NAME);
+		this.customHelper = Files.isRegularFile(custom.resolve("Contents/MacOS/" + EXECUTABLE_NAME));
+		if (this.customHelper) {
+			return custom;
+		}
 		final Path app = base.resolve(APP_NAME);
 
 		final List<String> manifest = readResourceLines(BUNDLE_RESOURCE_ROOT + "manifest.txt");
@@ -331,17 +359,24 @@ public final class MacHelperLauncher {
 	 * 通过 {@code open} 启动助手，使其成为独立的应用进程。
 	 *
 	 * @param app .app 路径
-	 * @param port 目标端口
+	 * @param port 姿态目标端口，0 表示不需要
+	 * @param audio 音频桥参数，可为 null
 	 * @throws IOException 启动失败
 	 * @throws InterruptedException 等待时被中断
 	 */
-	private void launch(final Path app, final int port) throws IOException, InterruptedException {
-		final List<String> command = List.of(
+	private void launch(final Path app, final int port, final AppleRenderer.HelperLink audio) throws IOException, InterruptedException {
+		final List<String> command = new ArrayList<>(List.of(
 			"/usr/bin/open", "-n", "-g", "-j", "-a", app.toString(),
 			"--args",
 			"--port", Integer.toString(port),
 			"--parent-pid", Long.toString(ProcessHandle.current().pid())
-		);
+		));
+		if (audio != null) {
+			command.add("--audio-port");
+			command.add(Integer.toString(audio.port()));
+			command.add("--audio-token");
+			command.add(audio.token());
+		}
 		final CommandResult result = run(command, 20);
 		if (result.exitCode() != 0) {
 			throw new IOException("open 返回 " + result.exitCode() + "：" + result.output());

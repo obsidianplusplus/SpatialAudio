@@ -212,13 +212,17 @@ public final class ListenerController {
 	}
 
 	/**
-	 * 读取最新头部旋转；模组关闭时返回单位旋转。
+	 * 读取最新头部旋转；模组关闭或由 Apple 负责头部追踪时返回单位旋转。
+	 *
+	 * <p>Apple 空间音频方式下，OpenAL 渲染的声场必须以摄像机为参照，头部旋转由助手中的 Apple 引擎施加；
+	 * Apple 系统空间化立体声方式下，头部追踪由 macOS 完成。两种情况下都不能再旋转 OpenAL 听者，否则会被计算两次。
 	 *
 	 * @return 头部旋转
 	 */
 	private Quat sampleHead() {
 		final SpatialAudioConfig config = ConfigManager.get();
-		final Quat rotation = config.enabled ? HeadTrackingManager.get().currentRotation() : Quat.IDENTITY;
+		final boolean rotate = config.enabled && AudioSystem.get().activeRenderer().rotatesOpenAlListener();
+		final Quat rotation = rotate ? HeadTrackingManager.get().currentRotation() : Quat.IDENTITY;
 		this.headYaw = rotation.yaw();
 		return rotation;
 	}
@@ -267,7 +271,7 @@ public final class ListenerController {
 	 */
 	private float[] positionWithTranslation() {
 		final double[] translation = HeadTrackingManager.get().currentTranslation();
-		if (translation == null || !ConfigManager.get().enabled) {
+		if (translation == null || !ConfigManager.get().enabled || !AudioSystem.get().activeRenderer().rotatesOpenAlListener()) {
 			return new float[] {(float) this.cameraPosition[0], (float) this.cameraPosition[1], (float) this.cameraPosition[2]};
 		}
 		final double[] f = this.cameraForward;

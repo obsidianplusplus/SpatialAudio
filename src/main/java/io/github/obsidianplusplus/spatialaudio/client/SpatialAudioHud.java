@@ -9,7 +9,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /**
- * 调试叠加层：在屏幕左上角显示头部追踪状态、实时姿态、HRTF 与声学环境。
+ * 调试叠加层：在屏幕左上角显示头部追踪状态、渲染方式、实时姿态、HRTF 与声学环境。
  *
  * <p>用于校准方向：向左转头时偏航应为正值、抬头时俯仰应为正值、向右歪头时横滚应为正值，
  * 若方向相反可在设置中反转对应轴。

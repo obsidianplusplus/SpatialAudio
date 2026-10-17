@@ -1,14 +1,19 @@
 package io.github.obsidianplusplus.spatialaudio.headtracking;
 
 import io.github.obsidianplusplus.spatialaudio.SpatialAudio;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleRenderer;
 import io.github.obsidianplusplus.spatialaudio.config.HeadTrackingSource;
 import io.github.obsidianplusplus.spatialaudio.config.SpatialAudioConfig;
+import io.github.obsidianplusplus.spatialaudio.config.SpatialRenderer;
 import io.github.obsidianplusplus.spatialaudio.math.Quat;
 import java.net.SocketException;
 
 /**
  * 头部追踪总管理器：负责 UDP 接收器、macOS 助手与姿态处理管线的生命周期，
  * 并向音频系统提供“当前头部相对屏幕的旋转”。
+ *
+ * <p>macOS 助手同时承担两项工作：读取 AirPods 姿态（SAHT），以及在 Apple 空间音频方式下渲染声场（SAAB）。
+ * 只要其中一项需要，就会启动助手。
  *
  * <p>线程模型：
  * <ul>
@@ -79,37 +84,56 @@ public final class HeadTrackingManager implements UdpPoseReceiver.Listener {
 	}
 
 	/**
-	 * 按配置（重新）启动头部追踪。
+	 * 按配置（重新）启动头部追踪，并在需要时（AirPods 追踪或 Apple 空间音频）启动 macOS 助手。
 	 *
 	 * @param config 当前配置
 	 */
 	public synchronized void start(final SpatialAudioConfig config) {
 		this.stop();
 		this.applySettings(config);
-		this.source = config.enabled ? config.trackingSource : HeadTrackingSource.DISABLED;
+		this.source = effectiveSource(config);
 		this.configuredPort = config.udpPort;
 		this.processor.reset();
-		if (this.source == HeadTrackingSource.DISABLED) {
-			return;
-		}
 		this.portFallback = false;
-		try {
-			this.receiver = new UdpPoseReceiver(config.udpPort, config.udpListenAllInterfaces, this);
-		} catch (SocketException e) {
-			SpatialAudio.LOGGER.warn("UDP 端口 {} 无法使用（{}），改用系统分配的临时端口", config.udpPort, e.getMessage());
+		if (this.source != HeadTrackingSource.DISABLED) {
 			try {
-				this.receiver = new UdpPoseReceiver(0, false, this);
-				this.portFallback = true;
-			} catch (SocketException fallbackError) {
-				SpatialAudio.LOGGER.error("无法创建头部追踪 UDP 接收器", fallbackError);
-				return;
+				this.receiver = new UdpPoseReceiver(config.udpPort, config.udpListenAllInterfaces, this);
+			} catch (SocketException e) {
+				SpatialAudio.LOGGER.warn("UDP 端口 {} 无法使用（{}），改用系统分配的临时端口", config.udpPort, e.getMessage());
+				try {
+					this.receiver = new UdpPoseReceiver(0, false, this);
+					this.portFallback = true;
+				} catch (SocketException fallbackError) {
+					SpatialAudio.LOGGER.error("无法创建头部追踪 UDP 接收器", fallbackError);
+				}
 			}
 		}
-		this.receiver.start();
-		SpatialAudio.LOGGER.info("头部追踪已启动：数据源 {}，UDP 端口 {}", this.source, this.receiver.port());
-		if (this.source.usesAirPodsHelper() && MacHelperLauncher.isMacOs()) {
-			this.helper.startAsync(this.receiver.port());
+		final UdpPoseReceiver current = this.receiver;
+		if (current != null) {
+			current.start();
+			SpatialAudio.LOGGER.info("头部追踪已启动：数据源 {}，UDP 端口 {}", this.source, current.port());
 		}
+		if (!MacHelperLauncher.isMacOs()) {
+			return;
+		}
+		final int posePort = current != null && this.source.usesAirPodsHelper() ? current.port() : 0;
+		final AppleRenderer.HelperLink audio = AppleRenderer.get().helperLink();
+		if (posePort > 0 || audio != null) {
+			this.helper.startAsync(posePort, audio);
+		}
+	}
+
+	/**
+	 * 实际生效的数据源：模组关闭或使用 Apple 系统空间化立体声（由 macOS 负责头部追踪）时视为关闭。
+	 *
+	 * @param config 配置
+	 * @return 数据源
+	 */
+	public static HeadTrackingSource effectiveSource(final SpatialAudioConfig config) {
+		if (!config.enabled || config.renderer == SpatialRenderer.APPLE_SYSTEM_STEREO) {
+			return HeadTrackingSource.DISABLED;
+		}
+		return config.trackingSource;
 	}
 
 	/**
@@ -155,7 +179,7 @@ public final class HeadTrackingManager implements UdpPoseReceiver.Listener {
 	}
 
 	/**
-	 * 判断配置变化是否需要重启追踪（数据源、端口或监听范围变化）。
+	 * 判断配置变化是否需要重启追踪（数据源、端口、监听范围或渲染方式变化；渲染方式决定助手的启动参数）。
 	 *
 	 * @param before 修改前
 	 * @param after 修改后
@@ -163,6 +187,7 @@ public final class HeadTrackingManager implements UdpPoseReceiver.Listener {
 	 */
 	public static boolean needsRestart(final SpatialAudioConfig before, final SpatialAudioConfig after) {
 		return before.enabled != after.enabled
+			|| before.renderer != after.renderer
 			|| before.trackingSource != after.trackingSource
 			|| before.udpPort != after.udpPort
 			|| before.udpListenAllInterfaces != after.udpListenAllInterfaces;

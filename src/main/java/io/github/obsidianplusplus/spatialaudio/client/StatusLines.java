@@ -2,9 +2,13 @@ package io.github.obsidianplusplus.spatialaudio.client;
 
 import io.github.obsidianplusplus.spatialaudio.acoustics.AcousticsManager;
 import io.github.obsidianplusplus.spatialaudio.acoustics.EnvironmentSnapshot;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleBridgeProtocol;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleRenderer;
+import io.github.obsidianplusplus.spatialaudio.apple.AppleRendererStatus;
 import io.github.obsidianplusplus.spatialaudio.audio.AudioSystem;
 import io.github.obsidianplusplus.spatialaudio.config.ConfigManager;
 import io.github.obsidianplusplus.spatialaudio.config.SpatialAudioConfig;
+import io.github.obsidianplusplus.spatialaudio.config.SpatialRenderer;
 import io.github.obsidianplusplus.spatialaudio.headtracking.HeadTrackingManager;
 import io.github.obsidianplusplus.spatialaudio.headtracking.TrackerStatus;
 import io.github.obsidianplusplus.spatialaudio.math.Quat;
@@ -15,6 +19,9 @@ import net.minecraft.network.chat.Component;
 
 /**
  * 生成状态信息文本，供调试叠加层、设置界面与 /spatialaudio status 命令共用。
+ *
+ * <p>行的顺序：头部追踪、渲染方式、头部姿态、HRTF、声学环境，最后是排障提示（渲染方式的提示在前）。
+ * 设置界面的状态面板最多显示 6 行，排在后面的内容在面板中可能被截断，但调试叠加层与命令会完整显示。
  */
 public final class StatusLines {
 	private StatusLines() {
@@ -52,7 +59,13 @@ public final class StatusLines {
 		lines.add(new Line(Component.translatable("spatialaudio.status_line.tracking",
 			Component.translatable(status.translationKey()), rateText), status.color()));
 
-		final Quat head = audio.listener().head();
+		final AppleRenderer apple = AppleRenderer.get();
+		final AppleRendererStatus rendererStatus = apple.status(config);
+		lines.add(new Line(Component.translatable("spatialaudio.status_line.renderer",
+			Component.translatable(rendererStatus.translationKey()), rendererDetails(apple, rendererStatus)), rendererStatus.color()));
+
+		// Apple 空间音频方式下 OpenAL 听者不随头部旋转（由助手旋转 Apple 引擎的听者），显示实际交给助手的姿态。
+		final Quat head = audio.activeRenderer() == SpatialRenderer.APPLE ? apple.displayHead() : audio.listener().head();
 		final double[] euler = head.toEulerZXY();
 		lines.add(new Line(Component.translatable("spatialaudio.status_line.pose",
 			String.format(Locale.ROOT, "%+.1f°", Math.toDegrees(euler[0])),
@@ -83,6 +96,14 @@ public final class StatusLines {
 			String.format(Locale.ROOT, "%.0f", env.echoDistance()),
 			audio.sources().size()), 0xFFB0BEC5));
 
+		if (includeHint && rendererStatus.needsAttention()) {
+			Component hint = Component.translatable(rendererStatus.hintKey());
+			final Component reason = apple.fallbackReason();
+			if (rendererStatus == AppleRendererStatus.FALLBACK && reason != null) {
+				hint = Component.empty().append(hint).append(" (").append(reason).append(")");
+			}
+			lines.add(new Line(hint, 0xFFFFE082));
+		}
 		if (includeHint && !status.isActive() && status != TrackerStatus.DISABLED) {
 			Component hint = Component.translatable(status.hintKey());
 			final String error = tracking.helper().lastError();
@@ -92,5 +113,27 @@ public final class StatusLines {
 			lines.add(new Line(hint, 0xFFFFE082));
 		}
 		return lines;
+	}
+
+	/**
+	 * Apple 空间音频正在渲染时的附加信息：声场格式、估计延迟、头部追踪来源、断音次数，
+	 * 以及助手具备个性化空间音频授权时的标记。
+	 *
+	 * @param apple Apple 渲染协调者
+	 * @param rendererStatus 渲染方式状态
+	 * @return 以“ · ”开头的附加文本；未在渲染时为空
+	 */
+	private static Component rendererDetails(final AppleRenderer apple, final AppleRendererStatus rendererStatus) {
+		if (rendererStatus != AppleRendererStatus.ACTIVE) {
+			return Component.empty();
+		}
+		final AppleBridgeProtocol.Hello hello = apple.helperHello();
+		final boolean personalized = hello != null && hello.has(AppleBridgeProtocol.CAP_PERSONALIZED_PROFILE);
+		return Component.translatable("spatialaudio.status_line.renderer_details",
+			Component.translatable(apple.format().translationKey()),
+			apple.estimatedLatencyMs(),
+			Component.translatable(apple.autoHeadTrackingActive() ? "spatialaudio.apple_tracking.auto" : "spatialaudio.apple_tracking.mod"),
+			apple.helperStatus().underruns(),
+			personalized ? Component.translatable("spatialaudio.status_line.renderer_personalized") : Component.empty());
 	}
 }

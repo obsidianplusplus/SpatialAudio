@@ -41,8 +41,23 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP"
 codesign --verify --verbose "$APP"
 
-# 自检：校验数据包格式并输出耳机运动可用性（不会触发授权弹窗）。
-"$APP/Contents/MacOS/$EXECUTABLE" --self-test
+# 自检：校验 SAHT/SAAB 数据格式、输出耳机运动可用性与授权情况，并以离线手动渲染检查
+# Apple 空间音频声床的方向（不会触发授权弹窗，也不需要音频设备）；失败时构建中止。
+SELF_TEST_LOG="$WORK_DIR/self-test.txt"
+if "$APP/Contents/MacOS/$EXECUTABLE" --self-test > "$SELF_TEST_LOG"; then
+    cat "$SELF_TEST_LOG"
+else
+    cat "$SELF_TEST_LOG"
+    echo "助手自检失败（selfTest=FAIL），构建中止。" >&2
+    exit 1
+fi
+
+# 自检只要有一个声床源位置候选通过就算通过；这里额外要求运行时实际使用的 bedSourcePosition 也通过，
+# 否则发布出去的渲染器会把声床的正前方摆错方向。失败时请按上面的 bedSourcePositionPassing 修改 main.swift 中的常量。
+if ! grep -q '^bedSourcePositionInUse=.* inUsePasses=true$' "$SELF_TEST_LOG"; then
+    echo "运行时使用的 bedSourcePosition 未通过离线渲染检查，请改用 bedSourcePositionPassing 中列出的位置，构建中止。" >&2
+    exit 1
+fi
 
 # 生成清单：第一行为内容摘要（用于判断是否需要重新解压），其后为全部文件的相对路径。
 cd "$OUT_DIR"
