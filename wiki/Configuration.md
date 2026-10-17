@@ -4,7 +4,8 @@
 
 - 非法数值会被自动修正到合法范围；
 - 文件损坏无法解析时，会被改名为 `spatialaudio.json.broken` 备份，并使用默认配置；
-- 修改 HRTF 相关设置会重新加载声音引擎（与切换原版“方向性音频”效果相同）；
+- 修改 HRTF 相关设置会重新加载声音引擎（与切换原版“方向性音频”效果相同；只在模组内置渲染生效时才需要）；
+- 修改渲染方式会重新加载声音引擎并重启头部追踪与助手；使用 Apple 空间音频时，修改声场格式也会重新加载声音引擎；
 - 修改数据源、端口或监听范围会重启头部追踪。
 
 ## 通用
@@ -12,10 +13,46 @@
 | 键 | 默认值 | 范围 | 说明 |
 | --- | --- | --- | --- |
 | `enabled` | `true` | | 模组总开关，关闭后全部恢复原版行为 |
-| `hrtfMode` | `"FORCE_ON"` | `FORCE_ON` / `FOLLOW_VANILLA` / `OFF` | HRTF 启用策略 |
-| `hrtfName` | `""` | 数据集名称 | 指定 HRTF 数据集，空字符串表示默认 |
+| `hrtfMode` | `"FORCE_ON"` | `FORCE_ON` / `FOLLOW_VANILLA` / `OFF` | HRTF 启用策略（只用于模组内置渲染；另外两种渲染方式总是关闭 OpenAL HRTF） |
+| `hrtfName` | `""` | 数据集名称 | 指定 HRTF 数据集，空字符串表示默认（只用于模组内置渲染） |
+| `renderer` | `"BUILT_IN"` | `BUILT_IN` / `APPLE` / `APPLE_SYSTEM_STEREO` | 空间音频渲染方式，见下文 |
+
+### 渲染方式
+
+`renderer` 对应设置界面“通用”分组中的 **空间音频渲染方式**，也可以用 `/spatialaudio renderer <built_in|apple|apple_system_stereo>` 切换：
+
+| JSON 取值 | 界面名称 | 说明 |
+| --- | --- | --- |
+| `BUILT_IN` | 模组内置 | 默认。OpenAL Soft HRTF 双耳渲染，头部追踪作用于 OpenAL 听者 |
+| `APPLE` | Apple 空间音频 | 声场经 macOS 助手交给 Apple 的空间音频引擎渲染；需要 macOS 14+，不满足要求或出错时自动回退到模组内置 |
+| `APPLE_SYSTEM_STEREO` | Apple 系统空间化立体声 | 只输出普通立体声并停止本模组的头部追踪，由 macOS 的“空间化立体声”完成空间化与头部追踪 |
+
+三种方式的区别、要求与设置方法见 [Apple 空间音频渲染](Apple-Spatial-Audio.md)。
+
+## Apple 空间音频
+
+以下各项位于设置界面的“Apple 空间音频”分组，只在 `renderer` 为 `APPLE` 时起作用。
+
+| 键 | 默认值 | 范围 | 界面名称 | 说明 |
+| --- | --- | --- | --- | --- |
+| `appleBedFormat` | `"AMBISONICS_3"` | `AMBISONICS_3` / `AMBISONICS_2` / `AMBISONICS_1` / `SURROUND_7_1` | 声场格式 | 交给 Apple 引擎的多声道声场，修改后重新加载声音引擎 |
+| `applePreferAutoHeadTracking` | `true` | | Apple 自动头部追踪 | 助手具备 Apple 的 head-pose 授权且系统为 macOS 15+ 时，改由 Apple 直接读取 AirPods 姿态；随附的助手没有该授权，始终使用本模组处理后的头部姿态 |
+| `appleBufferMs` | `30` | 10~200 | Apple 缓冲时长 | 助手中排队等待播放的音频时长（毫秒）。越小延迟越低，越大越不容易断音；头部姿态不经过这个缓冲 |
+
+`appleBedFormat` 的取值：
+
+| JSON 取值 | 界面名称 | 声道 |
+| --- | --- | --- |
+| `AMBISONICS_3` | 3 阶 Ambisonics | 16 |
+| `AMBISONICS_2` | 2 阶 Ambisonics | 9 |
+| `AMBISONICS_1` | 1 阶 Ambisonics | 4 |
+| `SURROUND_7_1` | 7.1 环绕声 | 8（仅水平面） |
+
+“Apple 自动头部追踪”与“Apple 缓冲时长”修改后立即发送给助手，不需要重新加载声音引擎。同一分组中的 **打开自备助手文件夹** 按钮会创建并打开 `config/spatialaudio/helper/custom/`，用于放置自备的带授权助手。各格式的取舍、授权与延迟见 [Apple 空间音频渲染](Apple-Spatial-Audio.md#声场格式)。
 
 ## 头部追踪
+
+渲染方式为“Apple 空间音频”时，数据源、强度、逐轴追踪与反转、回中、漂移校正、预测与平滑照常作用于交给 Apple 引擎的头部姿态（Apple 自动头部追踪生效时除外）；姿态以约 100 Hz 发送给助手，`listenerUpdateRate` 只决定 OpenAL 听者的刷新频率，头部平移只用于模组内置渲染。为“Apple 系统空间化立体声”时，本模组的头部追踪停止，由 macOS 负责，这些设置不起作用。
 
 | 键 | 默认值 | 范围 | 说明 |
 | --- | --- | --- | --- |
@@ -33,7 +70,7 @@
 | `smoothingMinCutoff` | `1.2` | 0.05~20 | One Euro 最小截止频率（Hz） |
 | `smoothingBeta` | `0.35` | 0~5 | One Euro 速度系数 |
 | `listenerUpdateRate` | `100` | 20~250 | 听者朝向刷新频率（Hz） |
-| `useTrackerTranslation` | `false` | | 使用 OpenTrack 的头部平移 |
+| `useTrackerTranslation` | `false` | | 使用 OpenTrack 的头部平移（只用于模组内置渲染） |
 | `translationScale` | `1.0` | 0~3 | 平移缩放 |
 
 ## 声场
@@ -42,6 +79,8 @@
 | --- | --- | --- |
 | `anchorToScreen` | `true` | 跟随听者的声音锚定屏幕方向 |
 | `spatializeStereo` | `true` | 世界中的立体声声音强制三维定位 |
+
+渲染方式为“Apple 空间音频”时，整个声场由助手随头部转动，所有声音都固定在屏幕方向，`anchorToScreen` 与各类别的 `screenAnchored` 不再有单独的效果。
 
 ## 声学模拟
 
@@ -118,7 +157,7 @@
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `showHud` | `false` | 屏幕左上角调试叠加层 |
-| `showSetupHints` | `true` | 进入世界时显示 AirPods 设置提示 |
+| `showSetupHints` | `true` | 进入世界时按当前渲染方式显示 macOS 与 AirPods 设置提示；进入世界前发生的 Apple 空间音频回退也在此时提示 |
 
 ## 完整的默认配置
 
@@ -128,6 +167,10 @@
   "enabled": true,
   "hrtfMode": "FORCE_ON",
   "hrtfName": "",
+  "renderer": "BUILT_IN",
+  "appleBedFormat": "AMBISONICS_3",
+  "applePreferAutoHeadTracking": true,
+  "appleBufferMs": 30,
   "trackingSource": "AUTO",
   "udpPort": 4242,
   "udpListenAllInterfaces": false,

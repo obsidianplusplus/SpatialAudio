@@ -14,16 +14,28 @@
 
 ## Minecraft 的音频引擎
 
-Minecraft Java 版通过 LWJGL 使用 **OpenAL Soft**（26.3 内置 LWJGL 3.4.3，OpenAL Soft 1.24 系列）。OpenAL Soft 本身就实现了高质量的 HRTF 渲染（“full” 模式下每个声源都用独立的 HRTF 滤波器，并在方向变化时平滑插值），原版也提供了“方向性音频”选项，但默认关闭，且：
+Minecraft Java 版通过 LWJGL 使用 **OpenAL Soft**（26.3 内置 LWJGL 3.4.3，OpenAL Soft 1.25.2）。OpenAL Soft 本身就实现了高质量的 HRTF 渲染（“full” 模式下每个声源都用独立的 HRTF 滤波器，并在方向变化时平滑插值），原版也提供了“方向性音频”选项，但默认关闭，且：
 
 - 不会强制以双耳模式输出；
 - 不处理立体声声音的定位；
 - 没有头部追踪；
 - 没有环境声学。
 
+## 渲染方式
+
+本页描述的是默认的 **模组内置** 渲染方式：由 OpenAL Soft 的 HRTF 完成双耳渲染。设置 → 通用 → **空间音频渲染方式**（或 `/spatialaudio renderer <方式>`）还可以把这最后一步交给 Apple，详见 [Apple 空间音频渲染](Apple-Spatial-Audio.md)：
+
+| 渲染方式 | 谁完成双耳渲染 | OpenAL 输出什么 |
+| --- | --- | --- |
+| **模组内置**（默认） | OpenAL Soft HRTF | 双耳立体声（见下文） |
+| **Apple 空间音频** | Apple 空间音频引擎（`AVAudioEnvironmentNode`） | 回环设备上以摄像机为参照的多声道声场（默认 3 阶 Ambisonics），不做 HRTF |
+| **Apple 系统空间化立体声** | macOS“空间化立体声” | 普通声像立体声，不做 HRTF |
+
+“HRTF 双耳渲染”与“HRTF 数据集”两项设置**只对模组内置渲染有效**。另外两种方式下修改它们不会重新加载声音引擎，切回模组内置时才生效；状态面板中的 HRTF 一项显示为“由 Apple 空间音频引擎渲染”或“由 macOS 空间化立体声渲染”。选择了 Apple 空间音频但系统不支持或已自动回退时，使用的是模组内置渲染，HRTF 设置照常有效。
+
 ## 本模组对 OpenAL 的设置
 
-模组在创建 OpenAL 上下文时（替换原版 `Library#createAttributes`）请求以下属性：
+模组内置渲染方式下，模组在创建 OpenAL 上下文时（替换原版 `Library#createAttributes`）请求以下属性：
 
 | 属性 | 值 | 作用 |
 | --- | --- | --- |
@@ -35,12 +47,28 @@ Minecraft Java 版通过 LWJGL 使用 **OpenAL Soft**（26.3 内置 LWJGL 3.4.3�
 
 上下文创建后，模组读取 `ALC_HRTF_STATUS_SOFT` 与 `ALC_HRTF_SPECIFIER_SOFT`，在设置界面、调试叠加层和日志中显示 HRTF 的真实状态。修改 HRTF 相关设置后，模组会像切换原版“方向性音频”一样重新加载声音引擎。
 
+### Apple 两种方式下的属性
+
+| 属性 | Apple 空间音频（回环设备） | Apple 系统空间化立体声 |
+| --- | --- | --- |
+| `ALC_FORMAT_CHANNELS_SOFT` | `ALC_BFORMAT3D_SOFT`（Ambisonics）或 `ALC_7POINT1_SOFT`（7.1） | — |
+| `ALC_FORMAT_TYPE_SOFT` / `ALC_FREQUENCY` | `ALC_FLOAT_SOFT` / 48000 | — |
+| `ALC_AMBISONIC_LAYOUT_SOFT` / `ALC_AMBISONIC_SCALING_SOFT` / `ALC_AMBISONIC_ORDER_SOFT` | `ALC_ACN_SOFT` / `ALC_SN3D_SOFT` / 声场格式的阶数（仅 Ambisonics） | — |
+| `ALC_HRTF_SOFT` | `ALC_FALSE` | `ALC_FALSE` |
+| `ALC_OUTPUT_MODE_SOFT` | — | `ALC_STEREO_BASIC_SOFT`（普通声像立体声） |
+| `ALC_OUTPUT_LIMITER_SOFT` | `ALC_TRUE` | `ALC_TRUE` |
+| `ALC_MAX_AUXILIARY_SENDS` | 2 | 2 |
+
+OpenAL Soft 1.25.2 的回环设备支持最高 7.1 与 B-Format（最高 4 阶 Ambisonics），不支持 7.1.4；7.1 输出只覆盖水平面，不使用中置与低音声道。默认的 3 阶 Ambisonics 则包含高度信息，也是 Apple 引擎支持的最高阶数。
+
 ### 使用的 OpenAL Soft 扩展
 
 | 扩展 | 用途 |
 | --- | --- |
 | `ALC_SOFT_HRTF` | 开关 HRTF、选择数据集、查询状态 |
-| `ALC_SOFT_output_mode` | 强制立体声 HRTF 输出 |
+| `ALC_SOFT_output_mode` | 强制立体声 HRTF 输出；系统空间化立体声方式下请求普通声像立体声 |
+| `ALC_SOFT_loopback` | Apple 空间音频方式：回环设备，由音频桥调用 `alcRenderSamplesSOFT` 取得混音结果 |
+| `ALC_SOFT_loopback_bformat` | Apple 空间音频方式：回环设备输出 Ambisonics（ACN / SN3D） |
 | `ALC_EXT_EFX` | 混响、回声效果槽与低通滤波器（见 [声学模拟](Acoustics.md)） |
 | `AL_SOFT_source_spatialize` | 让立体声文件也按声源位置三维定位 |
 | `AL_EXT_STEREO_ANGLES` | 旋转立体声虚拟扬声器，实现屏幕锚定 |
@@ -80,6 +108,8 @@ Apple 空间音频在播放音乐、视频时，会把声音固定在设备（�
 
 可在设置中关闭“屏幕锚定”，此时音乐与界面音效将随头部转动（与普通耳机一致）。
 
+以上做法只用于模组内置渲染。Apple 两种渲染方式下 OpenAL 听者不随头部旋转，屏幕锚定没有单独的效果，见 [声音类别适配](Sound-Categories.md#与渲染方式的关系)。
+
 ## 听者朝向合成
 
 头部追踪的核心是把“摄像机朝向”与“真实头部旋转”合成为最终的 OpenAL 听者朝向：
@@ -91,3 +121,5 @@ Apple 空间音频在播放音乐、视频时，会把声音固定在设备（�
 于是声音被固定在世界中：向左转头 90°，原本正前方的声源会出现在右耳一侧，与现实一致。头部旋转叠加在视角之上，所以低头看地面时转头，仍是绕“视角的上方向”旋转。
 
 原版只在每一帧渲染时更新听者，模组额外运行一个独立线程，按“听者刷新率”（默认 100 Hz）投递更新，使低帧率或暂停时转头依然顺滑。所有 OpenAL 调用都在原版声音线程中执行，与原版对声源的操作严格串行。
+
+Apple 两种渲染方式下，合成时使用单位头部旋转：OpenAL 听者只跟随摄像机。Apple 空间音频方式由助手旋转 Apple 引擎的听者，系统空间化立体声方式由 macOS 完成头部追踪，见 [头部追踪原理](Head-Tracking.md#不同渲染方式下的头部姿态)。

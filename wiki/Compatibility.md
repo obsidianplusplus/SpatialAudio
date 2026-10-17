@@ -12,12 +12,17 @@
 
 ## 操作系统
 
-| 系统 | HRTF 与声学 | AirPods 头部追踪 | OpenTrack 头部追踪 |
-| --- | --- | --- | --- |
-| macOS 14 Sonoma 及以上（Apple Silicon / Intel） | ✅ | ✅ | ✅ |
-| macOS 13 及以下 | ✅ | ❌（系统未提供耳机运动接口） | ✅ |
-| Windows 10 / 11 | ✅ | ❌ | ✅ |
-| Linux | ✅ | ❌ | ✅ |
+| 系统 | HRTF 与声学 | AirPods 头部追踪 | OpenTrack 头部追踪 | Apple 空间音频渲染 | Apple 系统空间化立体声 |
+| --- | --- | --- | --- | --- | --- |
+| macOS 14 Sonoma 及以上（Apple 芯片） | ✅ | ✅ | ✅ | ✅ | ✅ |
+| macOS 14 Sonoma 及以上（Intel） | ✅ | ⚠️ 助手为通用二进制，能否读取取决于系统是否提供耳机运动数据 | ✅ | ⚠️ 可以选择，但 Apple 说明 Mac 上的空间音频需要 Apple 芯片 | ❌ |
+| macOS 13 及以下 | ✅ | ❌（系统未提供耳机运动接口） | ✅ | ❌（自动使用模组内置渲染） | ✅ 仅限 Apple 芯片、macOS 12.3+ |
+| Windows 10 / 11 | ✅ | ❌ | ✅ | ❌（自动使用模组内置渲染） | ❌（只会输出普通立体声） |
+| Linux | ✅ | ❌ | ✅ | ❌（自动使用模组内置渲染） | ❌（只会输出普通立体声） |
+
+- **Apple 空间音频渲染**需要 macOS 14+；Apple 自动头部追踪（`isListenerHeadTrackingEnabled`）还需要 macOS 15+ 以及带 `com.apple.developer.coremotion.head-pose` 授权的自备助手，个性化空间音频需要 `com.apple.developer.spatial-audio.profile-access` 授权（Apple 文档标注该授权自 macOS 15 起提供）。随附的助手为 ad-hoc 签名，使用 Apple 的渲染引擎与通用 HRTF，头部姿态由本模组提供。详见 [Apple 空间音频渲染](Apple-Spatial-Audio.md)。
+- **Apple 系统空间化立体声**是 macOS 自带的功能：Apple 说明 Mac 上的空间音频与头部追踪需要 Apple 芯片与 macOS 12.3 或更新，并且“并非适用于所有 App 或内容”。
+- Minecraft 26.3 自带的 OpenAL Soft（随 LWJGL 3.4.3 内置，版本 1.25.2）的回环输出最多支持 7.1 与 4 阶 Ambisonics，不支持 7.1.4；它的 7.1 输出只在水平面上分布声音（不使用中置与低音声道），因此 Apple 空间音频默认使用 3 阶 Ambisonics。
 
 ## 耳机
 
@@ -44,8 +49,10 @@
 
 ## 系统音频功能
 
-| 功能 | 建议 |
-| --- | --- |
-| macOS“空间音频”（菜单栏 AirPods / 控制中心） | 对 Java 设为“关闭”，避免双重空间化 |
-| Windows Sonic / Dolby Atmos for Headphones | 关闭，原因相同 |
-| 均衡器、音量限制 | 不影响 |
+| 功能 | 模组内置（默认） | Apple 空间音频 | Apple 系统空间化立体声 |
+| --- | --- | --- | --- |
+| macOS“空间音频”（菜单栏 AirPods / 控制中心） | 对 Java 设为“关闭”，避免双重空间化 | 若为 SpatialAudio Head Tracker 列出，设为“关闭”；Minecraft 本身不再直接发声，Java 的设置不起作用 | 对 Java 选择“头部追踪”，并保持 系统设置 → 辅助功能 → 音频 →“空间音频跟随头部移动”开启 |
+| Windows Sonic / Dolby Atmos for Headphones | 关闭，原因相同 | 不适用：非 macOS 上自动使用模组内置渲染，按左列处理 | 不适用：此方式依赖 macOS |
+| 均衡器、音量限制 | 不影响 | 不影响 | 不影响 |
+
+各渲染方式的详细设置见 [macOS 与 AirPods 设置](macOS-AirPods.md#为什么要关闭系统空间音频)。
