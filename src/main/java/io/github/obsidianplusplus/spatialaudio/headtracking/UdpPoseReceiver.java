@@ -64,7 +64,7 @@ public final class UdpPoseReceiver implements Runnable {
 	 */
 	public UdpPoseReceiver(final int port, final boolean allInterfaces, final Listener listener) throws SocketException {
 		this.listener = listener;
-		final InetAddress address = allInterfaces ? null : InetAddress.getLoopbackAddress();
+		final InetAddress address = allInterfaces ? null : SpatialAudio.IPV4_LOOPBACK;
 		final DatagramSocket created = new DatagramSocket(null);
 		try {
 			created.setReuseAddress(false);

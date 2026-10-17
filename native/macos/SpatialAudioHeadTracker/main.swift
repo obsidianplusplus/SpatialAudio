@@ -451,6 +451,8 @@ enum Saab {
     static let statusIntervalMilliseconds = 250
     /// 连接失败或断开后的重试间隔（秒）。
     static let reconnectSeconds: TimeInterval = 1.0
+    /// 连续多少次连接刚建立就被关闭后认定本实例已过时并退出。
+    static let maxRejectedConnections = 5
     /// 请求循环的周期（微秒）。
     static let creditLoopMicroseconds: UInt32 = 2000
 
@@ -734,13 +736,14 @@ enum BridgeCapabilities {
     /// 检测能力位。只读取授权与可用性，不会触发任何权限请求。
     static func detect() -> UInt32 {
         var flags: UInt32 = 0
+        // 两项授权都从 macOS 15 起才生效，更早的系统即使带有授权也不会使用它们。
         if #available(macOS 15.0, *) {
             if Entitlements.isPresent(Saab.entitlementHeadPose) {
                 flags |= Saab.capabilityAutoHeadTracking
             }
-        }
-        if Entitlements.isPresent(Saab.entitlementProfileAccess) {
-            flags |= Saab.capabilityPersonalizedProfile
+            if Entitlements.isPresent(Saab.entitlementProfileAccess) {
+                flags |= Saab.capabilityPersonalizedProfile
+            }
         }
         if CMHeadphoneMotionManager().isDeviceMotionAvailable {
             flags |= Saab.capabilityMotionAvailable
@@ -1704,6 +1707,8 @@ final class AudioBridgeClient: @unchecked Sendable {
     private func connectionLoop() {
         var reportedFailure = false
         var quiet = false
+        // 连续被模组很快关闭的连接次数：令牌已失效（本实例已被新启动的助手替换）时会一直如此。
+        var rejectedInARow = 0
         while true {
             if let fd = openConnection() {
                 reportedFailure = false
@@ -1730,6 +1735,12 @@ final class AudioBridgeClient: @unchecked Sendable {
                     logMessage("模组音频桥连接已断开，将在 1 秒后重试")
                 }
                 quiet = shortLived
+                rejectedInARow = shortLived ? rejectedInARow + 1 : 0
+                if rejectedInARow >= Saab.maxRejectedConnections {
+                    // 模组每次重启助手都会更换令牌：持续被拒绝说明本实例已经过时，退出以免与新实例争抢。
+                    logMessage("连续 \(rejectedInARow) 次被模组拒绝，本助手实例已过时，退出")
+                    exit(0)
+                }
             } else if !reportedFailure {
                 reportedFailure = true
                 quiet = false
@@ -2520,8 +2531,9 @@ if options.audioPort != 0 {
     audioBridge = nil
 }
 
-if tracker == nil && audioBridge == nil && options.port != 0 {
-    // 与旧版行为一致：唯一的功能无法启动时直接退出。
+if tracker == nil && audioBridge == nil {
+    // 头部追踪与音频渲染都没有启动（UDP 套接字创建失败，或只要求音频却缺少有效令牌）：没有任何事可做，直接退出。
+    logMessage("没有需要执行的功能，助手退出")
     exit(1)
 }
 

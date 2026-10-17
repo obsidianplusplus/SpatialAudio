@@ -75,7 +75,7 @@ public abstract class LibraryMixin {
 		final AppleRenderer apple = AppleRenderer.get();
 		final boolean loopback = apple.isLoopbackDevice(this.currentDevice);
 		if (loopback) {
-			this.currentDeviceName = apple.targetDeviceName();
+			this.currentDeviceName = apple.resolveTargetDevice(currentDevices.allDevices(), currentDevices.defaultDevice());
 		}
 		AudioSystem.get().onLibraryInitialized(this.currentDevice, this.currentDeviceName);
 		if (loopback) {

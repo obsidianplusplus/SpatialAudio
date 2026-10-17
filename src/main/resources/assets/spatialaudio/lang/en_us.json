@@ -25,7 +25,7 @@
   "spatialaudio.option.enabled": "Spatial audio",
   "spatialaudio.option.enabled.tooltip": "Master switch. When off, HRTF, head tracking and acoustics all revert to vanilla behaviour.",
   "spatialaudio.option.hrtf_mode": "HRTF mode",
-  "spatialaudio.option.hrtf_mode.tooltip": "HRTF reproduces 3D direction using head and ear filtering; it is the core of headphone spatial audio. Use \"Force on\" with AirPods. Changing it reloads the sound engine.",
+  "spatialaudio.option.hrtf_mode.tooltip": "HRTF reproduces 3D direction using head and ear filtering; it is the core of headphone spatial audio. Use \"Force on\" with AirPods. Built-in renderer only; changing it reloads the sound engine.",
   "spatialaudio.option.hrtf_name": "HRTF dataset",
   "spatialaudio.option.hrtf_name.tooltip": "Choose the HRTF dataset used by OpenAL Soft. Put .mhr files in ~/.local/share/openal/hrtf and reopen this screen to pick them.",
   "spatialaudio.option.renderer": "Spatial renderer",

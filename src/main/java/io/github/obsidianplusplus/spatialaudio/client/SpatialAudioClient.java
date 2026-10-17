@@ -72,12 +72,16 @@ public final class SpatialAudioClient implements ClientModInitializer {
 	 */
 	public static void onConfigChanged(final SpatialAudioConfig before, final SpatialAudioConfig after) {
 		final boolean rendererChanged = before.enabled != after.enabled || before.renderer != after.renderer;
+		boolean retryApple = false;
 		if (rendererChanged || before.appleBedFormat != after.appleBedFormat) {
 			// 用户重新选择了渲染方式或声场格式：清除上一次的回退状态，再次尝试 Apple 渲染。
+			retryApple = AppleRenderer.get().fallbackReason() != null;
 			AppleRenderer.get().resetFallback();
 		}
 		AppleRenderer.get().configure(after);
-		if (HeadTrackingManager.needsRestart(before, after)) {
+		// 回退期间启动的助手不带音频参数（或已退出），重试 Apple 渲染时必须重新启动助手并发放新的令牌。
+		final boolean appleWanted = after.enabled && after.renderer == SpatialRenderer.APPLE;
+		if (HeadTrackingManager.needsRestart(before, after) || retryApple && appleWanted) {
 			HeadTrackingManager.get().start(after);
 		} else {
 			HeadTrackingManager.get().applySettings(after);

@@ -11,6 +11,7 @@ import io.github.obsidianplusplus.spatialaudio.math.Quat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -356,11 +357,20 @@ public final class AppleRenderer {
 	}
 
 	/**
-	 * 原版完成设备打开后应报告的设备名称（真实的目标输出设备，使原版的设备切换检测照常工作）。
+	 * 按当前设备列表确定目标输出设备，并返回原版应报告的设备名称，使原版的设备切换检测照常工作。
 	 *
+	 * <p>与原版打开真实设备时的回退规则一致：用户选择的设备当前不存在时改用系统默认设备，
+	 * 等它重新出现时原版会检测到“首选设备可用”并重新加载声音引擎，届时再让助手切换过去。
+	 *
+	 * @param allDevices 当前全部设备名称
+	 * @param defaultDevice 系统默认设备名称，可为 null
 	 * @return 设备名称
 	 */
-	public String targetDeviceName() {
+	public String resolveTargetDevice(final List<String> allDevices, final String defaultDevice) {
+		if (this.explicitDevice && !allDevices.isEmpty() && !allDevices.contains(this.targetDeviceName)) {
+			this.explicitDevice = false;
+			this.targetDeviceName = defaultDevice == null ? "" : defaultDevice;
+		}
 		return this.targetDeviceName;
 	}
 
@@ -568,12 +578,17 @@ public final class AppleRenderer {
 	}
 
 	/**
-	 * 估计的总延迟：助手缓冲 + 助手报告的输出延迟（不含蓝牙传输）。
+	 * 估计的总延迟：助手环形缓冲中实际排队的音频 + 助手报告的输出延迟（不含蓝牙传输）。
+	 * 助手会按音频硬件每次拉取的帧数自动加大缓冲，因此优先使用它上报的实际缓冲量；尚未收到状态时使用配置值。
 	 *
 	 * @return 毫秒
 	 */
 	public int estimatedLatencyMs() {
-		return this.bufferMs + Math.round(this.helperStatus().outputLatency() * 1000.0f);
+		final AppleBridgeProtocol.Status status = this.helperStatus();
+		final int queuedMs = status.has(AppleBridgeProtocol.STATUS_ENGINE_RUNNING)
+			? Math.round(status.bufferedFrames() * 1000.0f / SAMPLE_RATE)
+			: this.bufferMs;
+		return queuedMs + Math.round(status.outputLatency() * 1000.0f);
 	}
 
 	/**

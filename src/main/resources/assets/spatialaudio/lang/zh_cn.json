@@ -25,7 +25,7 @@
   "spatialaudio.option.enabled": "空间音频",
   "spatialaudio.option.enabled.tooltip": "模组总开关。关闭后 HRTF、头部追踪与声学模拟全部恢复为原版行为。",
   "spatialaudio.option.hrtf_mode": "HRTF 双耳渲染",
-  "spatialaudio.option.hrtf_mode.tooltip": "HRTF 用人头与耳廓的声学滤波还原三维方位感，是耳机空间音频的核心。佩戴 AirPods 时请选择“强制开启”。修改后会重新加载声音引擎。",
+  "spatialaudio.option.hrtf_mode.tooltip": "HRTF 用人头与耳廓的声学滤波还原三维方位感，是耳机空间音频的核心。佩戴 AirPods 时请选择“强制开启”。仅对“模组内置”渲染方式生效，修改后会重新加载声音引擎。",
   "spatialaudio.option.hrtf_name": "HRTF 数据集",
   "spatialaudio.option.hrtf_name.tooltip": "选择 OpenAL Soft 使用的 HRTF 数据集。可将 .mhr 文件放入 ~/.local/share/openal/hrtf 后重新进入本界面选择。",
   "spatialaudio.option.renderer": "空间音频渲染方式",

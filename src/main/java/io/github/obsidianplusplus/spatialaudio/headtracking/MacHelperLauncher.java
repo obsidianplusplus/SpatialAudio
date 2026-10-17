@@ -208,10 +208,37 @@ public final class MacHelperLauncher {
 				}
 			});
 		}
+		if (isMacOs()) {
+			// 助手的进程号要等它发来数据后才知道；刚启动就被替换的助手只能按启动参数找到：
+			// 结束所有由本游戏进程（--parent-pid）启动的助手，避免残留实例重复读取姿态或反复尝试连接。
+			final String self = Long.toString(ProcessHandle.current().pid());
+			ProcessHandle.allProcesses().filter(handle -> isOwnHelper(handle, self)).forEach(ProcessHandle::destroy);
+		}
 		this.helperPid = -1L;
 		if (this.state == State.LAUNCHED || this.state == State.PREPARING || this.state == State.COMPILING) {
 			this.state = State.IDLE;
 		}
+	}
+
+	/**
+	 * 判断进程是否为本游戏进程启动的助手。
+	 *
+	 * @param handle 进程
+	 * @param parentPid 本游戏进程号
+	 * @return 是本游戏的助手时返回 true
+	 */
+	private static boolean isOwnHelper(final ProcessHandle handle, final String parentPid) {
+		final ProcessHandle.Info info = handle.info();
+		if (!info.command().map(cmd -> cmd.contains(EXECUTABLE_NAME)).orElse(false)) {
+			return false;
+		}
+		final String[] arguments = info.arguments().orElse(new String[0]);
+		for (int i = 0; i + 1 < arguments.length; i++) {
+			if ("--parent-pid".equals(arguments[i]) && parentPid.equals(arguments[i + 1])) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

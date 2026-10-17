@@ -6,7 +6,6 @@ import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -143,6 +142,9 @@ public final class AppleAudioBridge implements AutoCloseable {
 	/** 最近一次发送的头部姿态（界面显示用）。 */
 	private volatile Quat lastHead = Quat.IDENTITY;
 
+	/** 是否已经记录过一次认证失败（之后同类日志降为调试级别）。 */
+	private volatile boolean rejectedLogged;
+
 	/** 累计推送的帧数（统计用）。 */
 	private final AtomicLong framesSent = new AtomicLong();
 
@@ -162,7 +164,8 @@ public final class AppleAudioBridge implements AutoCloseable {
 		this.headSupplier = headSupplier;
 		this.token = newToken();
 		this.server = new ServerSocket();
-		this.server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 2);
+		// 必须绑定 IPv4 回环地址：助手固定连接 127.0.0.1。
+		this.server.bind(new InetSocketAddress(SpatialAudio.IPV4_LOOPBACK, 0), 2);
 		this.acceptor = new Thread(this::acceptLoop, "SpatialAudio-AppleBridge-Accept");
 		this.acceptor.setDaemon(true);
 		this.pump = new Thread(this::pumpLoop, "SpatialAudio-AppleBridge-Pump");
@@ -430,7 +433,13 @@ public final class AppleAudioBridge implements AutoCloseable {
 				SpatialAudio.LOGGER.info("Apple 空间音频助手已断开");
 			}
 		} catch (IOException | AppleBridgeProtocol.ProtocolException e) {
-			if (!this.closed) {
+			if (!this.closed && !connection.authenticated && this.rejectedLogged) {
+				// 被替换的旧助手会每秒重试一次直到自行退出，后续的认证失败只记调试日志，避免刷屏。
+				SpatialAudio.debug("Apple 音频桥拒绝连接：{}", e.getMessage());
+			} else if (!this.closed) {
+				if (!connection.authenticated) {
+					this.rejectedLogged = true;
+				}
 				SpatialAudio.LOGGER.warn("Apple 音频桥连接出错：{}", e.getMessage());
 			}
 		} finally {
