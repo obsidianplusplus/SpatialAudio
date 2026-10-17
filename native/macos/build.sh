@@ -67,4 +67,4 @@ VERSION="$(find "$APP_NAME" -type f | LC_ALL=C sort | while IFS= read -r FILE; d
     find "$APP_NAME" -type f | LC_ALL=C sort
 } > manifest.txt
 
-echo "助手构建完成：$APP（版本 $VERSION）"
+echo "助手构建完成：${APP}（版本 ${VERSION}）"

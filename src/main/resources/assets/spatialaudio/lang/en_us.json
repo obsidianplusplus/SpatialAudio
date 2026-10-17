@@ -177,7 +177,7 @@
   "spatialaudio.status.helper_no_response": "Helper not responding",
   "spatialaudio.status.helper_no_response.hint": "The helper started but sends nothing. It may be blocked by security software, or the UDP port is busy.",
   "spatialaudio.status.helper_error": "Helper error",
-  "spatialaudio.status.helper_error.hint": "CoreMotion reported an error. Reconnect your AirPods and click \"Restart head tracking\".",
+  "spatialaudio.status.helper_error.hint": "CoreMotion reported an error. Reconnect your AirPods and click \"Restart tracking\".",
   "spatialaudio.status.unsupported_os": "macOS too old",
   "spatialaudio.status.unsupported_os.hint": "AirPods head tracking needs macOS 14 Sonoma or newer. OpenTrack still works.",
   "spatialaudio.status.not_available": "Not available",

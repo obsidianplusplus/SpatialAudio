@@ -569,9 +569,15 @@ public final class AppleAudioBridge implements AutoCloseable {
 			// 落后太多（例如刚从休眠恢复）时不再追赶。
 			next = now;
 		}
-		if (now >= next && audio.capacity() >= FREE_RUN_FRAMES * active.channels() * Float.BYTES) {
+		if (audio.capacity() < FREE_RUN_FRAMES * active.channels() * Float.BYTES) {
+			return next;
+		}
+		// 线程唤醒可能比预期晚（系统会合并定时器），因此一次补齐所有到期的块，保证长期速度等于实时。
+		while (now >= next) {
 			audio.clear();
-			this.renderInto(active, audio, FREE_RUN_FRAMES);
+			if (!this.renderInto(active, audio, FREE_RUN_FRAMES)) {
+				return now;
+			}
 			next += chunkNanos;
 		}
 		return next;

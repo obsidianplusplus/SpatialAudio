@@ -177,7 +177,7 @@
   "spatialaudio.status.helper_no_response": "助手无响应",
   "spatialaudio.status.helper_no_response.hint": "助手已启动但没有发送数据。可能被安全软件阻止，或 UDP 端口被占用。",
   "spatialaudio.status.helper_error": "助手报错",
-  "spatialaudio.status.helper_error.hint": "CoreMotion 报告了错误。请尝试重新连接 AirPods 后点击“重启头部追踪”。",
+  "spatialaudio.status.helper_error.hint": "CoreMotion 报告了错误。请尝试重新连接 AirPods 后点击“重启追踪与渲染”。",
   "spatialaudio.status.unsupported_os": "系统版本过低",
   "spatialaudio.status.unsupported_os.hint": "AirPods 头部追踪需要 macOS 14 Sonoma 或更新版本。仍可使用 OpenTrack。",
   "spatialaudio.status.not_available": "设备不支持",
