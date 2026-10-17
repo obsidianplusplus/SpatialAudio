@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "spatialaudio",
+  "version": "${version}",
+  "name": "SpatialAudio",
+  "description": "为 Minecraft 带来 AirPods 空间音频与头部追踪：HRTF 双耳渲染、实时声学模拟（混响、遮挡、绕射、回声、空气吸收）以及全部声音类别的适配。",
+  "authors": [
+    "obsidianplusplus"
+  ],
+  "contact": {
+    "homepage": "https://github.com/obsidianplusplus/SpatialAudio",
+    "sources": "https://github.com/obsidianplusplus/SpatialAudio",
+    "issues": "https://github.com/obsidianplusplus/SpatialAudio/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/spatialaudio/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.obsidianplusplus.spatialaudio.client.SpatialAudioClient"
+    ],
+    "modmenu": [
+      "io.github.obsidianplusplus.spatialaudio.client.compat.ModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "spatialaudio.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
+  }
+}

@@ -1,0 +1,118 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Mod Menu 仅用于编译期的可选集成，运行时不强制依赖。
+	maven {
+		name = 'TerraformersMC'
+		url = 'https://maven.terraformersmc.com/releases/'
+		content {
+			includeGroup 'com.terraformersmc'
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+loom {
+	runs {
+		client {
+			// 开发环境中打开调试日志，便于观察头部追踪与声学数据。
+			vmArgs '-Dspatialaudio.debug=true'
+		}
+	}
+}
+
+// 客户端集成测试（src/gametest）：真实启动游戏，验证注入点、HRTF、头部追踪与声学模拟。
+// 运行：./gradlew runClientGameTest（需要图形环境，Linux 可配合 xvfb-run 使用）。
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'spatialaudio-gametest'
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
+// ---------------------------------------------------------------------------
+// macOS 头部追踪助手（Swift 编写的独立 .app）
+// 仅在 macOS 主机上编译；其它系统构建时 jar 中只包含 Swift 源码，
+// 模组会在玩家的 Mac 上检测到 Xcode 命令行工具后自动现场编译。
+// ---------------------------------------------------------------------------
+def isMacHost = System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('mac')
+def skipMacHelper = providers.gradleProperty('skipMacHelper').isPresent()
+def helperSourceDir = file('native/macos')
+def helperOutputDir = layout.buildDirectory.dir('generated/mac-helper')
+
+def buildMacHelper = tasks.register('buildMacHelper', Exec) {
+	group = 'build'
+	description = '在 macOS 上编译 AirPods 头部追踪助手（arm64 + x86_64 通用二进制）。'
+	onlyIf { isMacHost && !skipMacHelper }
+	inputs.dir(helperSourceDir)
+	outputs.dir(helperOutputDir)
+	workingDir = helperSourceDir
+	commandLine 'sh', 'build.sh', helperOutputDir.get().asFile.absolutePath
+}
+
+processResources {
+	dependsOn buildMacHelper
+
+	def version = project.version
+	inputs.property 'version', version
+
+	filesMatching('fabric.mod.json') {
+		expand 'version': version
+	}
+
+	// 预编译好的助手 .app（仅 macOS 主机构建时存在）。
+	from(helperOutputDir) {
+		into 'spatialaudio/helper/bundle'
+	}
+	// 助手的 Swift 源码与 Info.plist，用于在玩家机器上现场编译。
+	from("${helperSourceDir}/SpatialAudioHeadTracker") {
+		into 'spatialaudio/helper/src'
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = 'UTF-8'
+	it.options.compilerArgs += ['-Xlint:deprecation']
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+test {
+	useJUnitPlatform()
+}
+
+jar {
+	def projectName = project.name
+	inputs.property 'projectName', projectName
+
+	from('LICENSE') {
+		rename { "${it}_${projectName}" }
+	}
+}

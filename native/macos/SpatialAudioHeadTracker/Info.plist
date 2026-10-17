@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh_CN</string>
+  <key>CFBundleExecutable</key>
+  <string>SpatialAudioHeadTracker</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.obsidianplusplus.spatialaudio.headtracker</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>SpatialAudio Head Tracker</string>
+  <key>CFBundleDisplayName</key>
+  <string>SpatialAudio Head Tracker</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSMotionUsageDescription</key>
+  <string>SpatialAudio 需要读取 AirPods 的头部姿态，让 Minecraft 的声音在你转头时仍保持在世界中的正确方位（头部追踪空间音频）。SpatialAudio reads your AirPods head orientation so Minecraft sounds stay fixed in the world when you turn your head.</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 obsidianplusplus. MIT License.</string>
+</dict>
+</plist>

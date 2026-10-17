@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+out/
+classes/
+
+# Loom 运行目录
+run/
+runs/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+bin/
+
+# macOS
+.DS_Store
+
+# 本地 JDK 等临时文件
+*.log

@@ -1,0 +1,135 @@
+# 持续集成：
+# - macOS：编译 AirPods 头部追踪助手（arm64 + x86_64 通用二进制）并打包进模组 jar，运行单元测试；
+# - Linux：运行单元测试，并在虚拟显示器中启动真实客户端执行集成测试（OpenAL 输出到 WAV 文件后分析双耳声道）；
+# - 推送 v* 标签时自动发布 Release。
+name: 构建
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS 构建（含 AirPods 助手）
+    runs-on: macos-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: 配置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 构建与单元测试
+        run: ./gradlew build --stacktrace
+
+      - name: 校验 jar 内包含预编译助手
+        run: |
+          JAR=$(ls build/libs/spatialaudio-*.jar | grep -v sources)
+          unzip -l "$JAR" | grep "spatialaudio/helper/bundle/SpatialAudioHeadTracker.app/Contents/MacOS/SpatialAudioHeadTracker"
+          unzip -l "$JAR" | grep "spatialaudio/helper/bundle/manifest.txt"
+          unzip -l "$JAR" | grep "spatialaudio/helper/src/main.swift"
+
+      - name: 助手自检与签名校验
+        run: |
+          APP=build/generated/mac-helper/SpatialAudioHeadTracker.app
+          codesign --verify --verbose "$APP"
+          lipo -info "$APP/Contents/MacOS/SpatialAudioHeadTracker"
+          "$APP/Contents/MacOS/SpatialAudioHeadTracker" --self-test
+          plutil -p "$APP/Contents/Info.plist" | grep NSMotionUsageDescription
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatialaudio-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+  linux:
+    name: Linux 测试（含客户端集成测试）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: 配置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 单元测试
+        run: ./gradlew test --stacktrace
+
+      - name: 安装虚拟显示器与软件渲染
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libgl1-mesa-dri libegl1 libegl-mesa0 mesa-utils
+
+      - name: 客户端集成测试
+        env:
+          ALSOFT_DRIVERS: wave
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          # Xvfb 的软件 GLX 不提供 sRGB 视觉，而 26.3 的 OpenGL 后端需要 sRGB 帧缓冲，改用 EGL 创建上下文。
+          SDL_VIDEO_FORCE_EGL: "1"
+        run: |
+          export XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg-runtime
+          mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+          mkdir -p build/gametest-audio
+          cat > build/gametest-audio/alsoft.conf <<CONF
+          [general]
+          drivers = wave
+          channels = stereo
+          frequency = 48000
+          sample-type = int16
+
+          [wave]
+          file = $PWD/build/gametest-audio/output.wav
+          CONF
+          export ALSOFT_CONF=$PWD/build/gametest-audio/alsoft.conf
+          export SPATIALAUDIO_TEST_WAV=$PWD/build/gametest-audio/output.wav
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --stacktrace
+
+      - name: 上传集成测试截图与日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-gametest
+          path: |
+            build/run/clientGameTest/screenshots
+            build/run/clientGameTest/logs
+          if-no-files-found: ignore
+
+  release:
+    name: 发布 Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: spatialaudio-jar
+          path: dist
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.jar
+          generate_release_notes: true

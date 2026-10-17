@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "spatialaudio-gametest",
+  "version": "1.0.0",
+  "name": "SpatialAudio Client GameTest",
+  "description": "SpatialAudio 的客户端集成测试，仅在开发环境中运行。",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": [
+      "io.github.obsidianplusplus.spatialaudio.gametest.SpatialAudioClientGameTest"
+    ]
+  },
+  "depends": {
+    "spatialaudio": "*",
+    "fabric-client-gametest-api-v1": "*"
+  }
+}
