@@ -26,7 +26,7 @@ public final class ModCompat {
 	}
 
 	/**
-	 * 是否安装了 Simple Voice Chat（其语音声源使用同一个 OpenAL 上下文，会自动获得 HRTF 与头部追踪）。
+	 * 是否安装了 Simple Voice Chat（其语音使用独立的 OpenAL 设备与上下文播放，不经过原版声音引擎，本模组不处理语音）。
 	 *
 	 * @return 已安装时返回 true
 	 */

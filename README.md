@@ -37,6 +37,16 @@ SpatialAudio 是一个**纯客户端**的 Fabric 模组。戴上 AirPods（Pro /
 | 🚀 **多普勒效应** | 可选：鞘翅高速飞过时的音高变化 |
 | 🔊 **全部声音适配** | 音乐、唱片、天气、方块、敌对/友好生物、玩家、环境、语音、界面——每个类别都可单独设置 |
 
+## 截图
+
+以下截图由自动化客户端集成测试生成（Linux 虚拟显示器，OpenAL 输出到 WAV 文件，头部姿态由模拟的 OpenTrack 发送）。
+
+| 设置界面 | 声音类别设置 |
+| --- | --- |
+| ![空间音频设置界面：状态面板、回中与重启按钮、通用选项](docs/images/config-zh.png) | ![声音类别设置：每个类别的三维定位、遮挡、混响发送与屏幕锚定](docs/images/categories-zh.png) |
+| **调试叠加层（开阔地）** | **调试叠加层（石室：封闭度 100%，RT60 4.82 秒）** |
+| ![调试叠加层显示头部追踪、HRTF 与声学状态](docs/images/hud-zh.png) | ![石头房间内的调试叠加层（英文界面）](docs/images/stone-room.png) |
+
 ## 系统要求
 
 - Minecraft Java 版 **26.3**
@@ -102,7 +112,7 @@ Apple 规定：使用 `CMHeadphoneMotionManager` 读取耳机姿态的进程必�
 ## 兼容性
 
 - **Sound Physics Remastered**：两者都会修改声源的滤波与混响。检测到它时，本模组默认自动让出声学模拟，只保留 HRTF 与头部追踪（可在设置中改为同时启用）。
-- **Simple Voice Chat** 等使用 Minecraft OpenAL 上下文的语音模组：语音同样会获得 HRTF 双耳渲染与头部追踪。
+- **Simple Voice Chat**：语音使用它自己的 OpenAL 设备与上下文播放，不经过原版声音引擎，因此不会被本模组处理；二者互不干扰。
 - 资源包与其它模组添加的声音：全部自动适配；世界中的立体声声音也会被强制三维定位。
 
 更多信息见 [兼容性](wiki/Compatibility.md)。

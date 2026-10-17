@@ -35,7 +35,7 @@ public final class SpatialAudioClient implements ClientModInitializer {
 		}
 
 		if (ModCompat.isVoiceChatLoaded()) {
-			SpatialAudio.LOGGER.info("检测到 Simple Voice Chat：使用同一 OpenAL 上下文的语音将自动获得 HRTF 与头部追踪");
+			SpatialAudio.LOGGER.info("检测到 Simple Voice Chat：语音使用其独立的 OpenAL 设备与上下文播放，不经过本模组处理，二者互不干扰");
 		}
 
 		KeyBindings.register();
